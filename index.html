@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <title>LuciData — Inventory</title>
+
+  <!-- Core styles -->
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="retail.css">
+</head>
+
+<body>
+<header>
+  <div class="logo">LuciData</div>
+  <button id="simulatePosBtn" class="btn btn-primary">
+  Simulează vânzare POS
+</button>
+  <nav>
+    <a href="index.html">Dashboard</a>
+    <a href="board.html">Board View</a>
+    <a href="retail.html" class="active-link">Retail</a>
+    <a href="stores.html">Stores</a>
+    <a href="Products.html">Product</a>
+  </nav>
+</header>
+
+<main class="container">
+
+  <!-- ================= HEADER ================= -->
+  <section class="section-header">
+    <h1>Inventory Management</h1>
+    <p>Stocuri per magazin, raft & depozit — automatizare AI</p>
+  </section>
+
+  <!-- ================= INVENTORY TABLE ================= -->
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Magazin</th>
+          <th>SKU</th>
+          <th>Raft</th>
+          <th>Depozit</th>
+          <th>Total</th>
+          <th>Status</th>
+          <th>AI Explain</th>
+        </tr>
+      </thead>
+      <tbody id="inventoryTableBody"></tbody>
+    </table>
+  </div>
+
+  <!-- ================= AI TASKS ================= -->
+  <section class="section-header" style="margin-top:40px;">
+    <h2>AI Generated Tasks</h2>
+    <p>Task-uri operaționale generate automat</p>
+  </section>
+
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Magazin</th>
+          <th>SKU</th>
+          <th>Tip Task</th>
+          <th>Prioritate</th>
+          <th>Motiv</th>
+          <th>Cantitate sugerată</th>
+        </tr>
+      </thead>
+      <tbody id="tasksTableBody"></tbody>
+    </table>
+  </div>
+
+</main>
+
+<!-- DATA + ENGINE -->
+<script src="inventory-data.js"></script>
+<script src="inventory-engine.js"></script>
+<script src="pos-simulator.js"></script>
+<script src="pos-ui.js"></script>
+
+<!-- UI LOGIC -->
+<script src="inventory.js"></script>
+
+</body>
+<!-- POS SIMULATOR MODAL -->
+<div id="posModal" class="pos-modal hidden">
+  <div class="pos-card">
+    <h3>Simulare vânzare POS</h3>
+
+    <label>Magazin</label>
+    <select id="posStore"></select>
+
+    <label>SKU</label>
+    <select id="posSku"></select>
+
+    <label>Cantitate</label>
+    <input type="number" id="posQty" min="1" value="1" />
+
+    <div class="pos-actions">
+      <button id="runPosSim" class="btn btn-primary">Simulează</button>
+      <button id="closePosSim" class="btn btn-secondary">Anulează</button>
+    </div>
+  </div>
+</div>
+
+</html>
