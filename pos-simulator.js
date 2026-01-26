@@ -1,39 +1,69 @@
 // assets/js/pos-simulator.js
-// POS Simulator – fără LuciData, fără localStorage
-// Compatibil cu inventory.js + Firebase
+// Simulare POS – vânzare la casă
 
-window.POSSimulator = {
+window.LuciData = window.LuciData || {};
+LuciData.retail = LuciData.retail || {};
 
-  /**
-   * Simulează o vânzare POS
-   * @param {Object} payload
-   * @param {string} payload.storeId
-   * @param {string} payload.sku
-   * @param {number} payload.quantity
-   */
+LuciData.retail.pos = {
+
   simulateSale({ storeId, sku, quantity }) {
-    if (!storeId || !sku || !quantity) {
-      console.warn("POS Simulator: date invalide", {
-        storeId, sku, quantity
-      });
+    const item = LuciData.retail.inventory.find(
+      i => i.storeId === storeId && i.sku === sku
+    );
+
+    if (!item) {
+      console.warn("POS: produsul nu există în inventar");
       return;
     }
 
-    console.log(
-      `[POS SIM] ${storeId} | ${sku} | -${quantity}`
-    );
+    // 1. Scădem din raft
+    item.shelfStock = Math.max(0, item.shelfStock - quantity);
 
-    // 🔔 Declanșăm eveniment custom
-    document.dispatchEvent(
-      new CustomEvent("pos:sale", {
-        detail: {
-          storeId,
-          sku,
-          quantity,
-          timestamp: new Date().toISOString()
-        }
-      })
+    // 2. Log eveniment
+    LuciData.retail.events = LuciData.retail.events || [];
+    LuciData.retail.events.push({
+      type: "POS_SALE",
+      storeId,
+      sku,
+      quantity,
+      timestamp: new Date().toISOString()
+    });
+
+    console.log(
+      `POS SALE → ${storeId} | ${sku} | -${quantity} buc`
     );
   }
+LuciData.audit.record({
+  entityType: "POS",
+  entityId: `${storeId}-${sku}`,
+  action: "POS_SALE",
+  actor: {
+    type: "SYSTEM",
+    role: "POS"
+  },
+  context: {
+    storeId,
+    sku,
+    quantity
+  },
+  result: "SUCCESS"
+});
 
 };
+
+// DUPĂ ce scazi stocul
+LuciData.audit.record({
+  entityType: "POS",
+  entityId: `${storeId}-${sku}`,
+  action: "POS_SALE",
+  actor: {
+    type: "SYSTEM",
+    role: "POS"
+  },
+  context: {
+    storeId,
+    sku,
+    quantity
+  },
+  result: "SUCCESS"
+});
