@@ -1,20 +1,13 @@
 // assets/js/inventory.js
-// Inventory UI + Firebase Auth + Firestore
-// FĂRĂ base.js · FĂRĂ LuciData · UN SINGUR FIȘIER
+// Inventory UI + Firebase Firestore (NO localStorage)
 
-/* =========================
-   FIREBASE IMPORTS
-========================= */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import {
-  getAuth,
-  signInWithEmailAndPassword,
-  onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-analytics.js";
 import {
   getFirestore,
   collection,
+  query,
+  where,
   onSnapshot,
   doc,
   updateDoc,
@@ -24,137 +17,68 @@ import {
 /* =========================
    FIREBASE INIT
 ========================= */
+
 const firebaseConfig = {
   apiKey: "AIzaSyCGOo2RHcC8esOLFyTGiaadJS90AhC-PwQ",
   authDomain: "lucidata-inventory.firebaseapp.com",
   projectId: "lucidata-inventory",
   storageBucket: "lucidata-inventory.firebasestorage.app",
   messagingSenderId: "326427323164",
-  appId: "1:326427323164:web:02b4e5f9738e43ef9ba8d9"
+  appId: "1:326427323164:web:02b4e5f9738e43ef9ba8d9",
+  measurementId: "G-6J6YH21R32"
 };
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+const analytics = getAnalytics(app);
 const db = getFirestore(app);
 
 /* =========================
    STATE
 ========================= */
-let INVENTORY = [];
-let unsubscribeInventory = null;
+
+let INVENTORY = []; // date live din Firestore
 
 /* =========================
-   LOGIN OVERLAY (AUTO)
+   DOM READY
 ========================= */
-function showLogin() {
-  if (document.getElementById("loginOverlay")) return;
 
-  const overlay = document.createElement("div");
-  overlay.id = "loginOverlay";
-  overlay.style.cssText = `
-    position:fixed; inset:0; z-index:9999;
-    background:#0f172a;
-    display:flex; align-items:center; justify-content:center;
-  `;
-
-  overlay.innerHTML = `
-    <div style="
-      background:#111827;
-      padding:32px;
-      width:360px;
-      border-radius:14px;
-      box-shadow:0 30px 60px rgba(0,0,0,.6);
-      color:#fff;
-    ">
-      <h2 style="text-align:center;margin-bottom:16px">Autentificare</h2>
-      <input id="loginEmail" placeholder="Email"
-        style="width:100%;padding:10px;margin-bottom:12px;border-radius:8px;border:none" />
-      <input id="loginPassword" type="password" placeholder="Parolă"
-        style="width:100%;padding:10px;margin-bottom:16px;border-radius:8px;border:none" />
-      <button id="loginBtn"
-        style="width:100%;padding:12px;border-radius:8px;border:none;
-        background:#2563eb;color:#fff;font-size:15px">
-        Login
-      </button>
-      <div id="loginError"
-        style="margin-top:12px;color:#f87171;text-align:center;font-size:14px"></div>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-
-  document.getElementById("loginBtn").onclick = async () => {
-    const email = document.getElementById("loginEmail").value.trim();
-    const pass = document.getElementById("loginPassword").value.trim();
-    const err = document.getElementById("loginError");
-
-    err.textContent = "";
-
-    try {
-      await signInWithEmailAndPassword(auth, email, pass);
-    } catch {
-      err.textContent = "Email sau parolă incorecte.";
-    }
-  };
-}
-
-function hideLogin() {
-  const el = document.getElementById("loginOverlay");
-  if (el) el.remove();
-}
-
-/* =========================
-   AUTH STATE
-========================= */
-onAuthStateChanged(auth, (user) => {
-  if (!user) {
-    showLogin();
-    if (unsubscribeInventory) {
-      unsubscribeInventory();
-      unsubscribeInventory = null;
-    }
-    return;
-  }
-
-  hideLogin();
-  startInventory();
+document.addEventListener("DOMContentLoaded", () => {
+  subscribeInventory();
+  bindSimulatePOS();
 });
 
 /* =========================
-   FIRESTORE SUBSCRIBE
+   FIRESTORE SUBSCRIPTIONS
 ========================= */
-function startInventory() {
-  if (unsubscribeInventory) return;
 
-  unsubscribeInventory = onSnapshot(
-    collection(db, "inventory"),
-    (snapshot) => {
-      INVENTORY = snapshot.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      }));
+function subscribeInventory() {
+  const q = query(collection(db, "inventory"));
 
-      renderInventoryTable();
-      renderInventoryTasks();
-    }
-  );
+  onSnapshot(q, (snapshot) => {
+    INVENTORY = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
 
-  bindPosButton();
+    renderInventoryTable();
+    renderInventoryTasks();
+  });
 }
 
 /* =========================
-   INVENTORY TABLE
+   RENDER INVENTORY TABLE
 ========================= */
+
 function renderInventoryTable() {
   const tbody = document.getElementById("inventoryTableBody");
-  if (!tbody || !window.InventoryEngine) return;
+  if (!tbody) return;
 
   tbody.innerHTML = "";
 
   INVENTORY.forEach(item => {
-    const status = InventoryEngine.getInventoryStatus(item);
-    const total = InventoryEngine.getTotalStock(item);
-    const explain = InventoryEngine.explain(item);
+    const status = LuciData.retail.inventoryEngine.getInventoryStatus(item);
+    const total = LuciData.retail.inventoryEngine.getTotalStock(item);
+    const explain = LuciData.retail.inventoryEngine.explain(item);
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -166,22 +90,26 @@ function renderInventoryTable() {
       <td><span class="status ${status.toLowerCase()}">${status}</span></td>
       <td class="ai-explain">${explain}</td>
     `;
+
     tbody.appendChild(tr);
   });
 }
 
 /* =========================
-   AI TASKS
+   RENDER TASKS (AI ENGINE)
 ========================= */
+
 function renderInventoryTasks() {
   const tbody = document.getElementById("tasksTableBody");
-  if (!tbody || !window.InventoryEngine) return;
+  if (!tbody) return;
 
   tbody.innerHTML = "";
 
   const storeIds = [...new Set(INVENTORY.map(i => i.storeId))];
+
   storeIds.forEach(storeId => {
-    const tasks = InventoryEngine.generateTasks(storeId, INVENTORY);
+    const tasks = LuciData.retail.inventoryEngine.generateTasks(storeId, INVENTORY);
+
     tasks.forEach(task => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -198,20 +126,48 @@ function renderInventoryTasks() {
 }
 
 /* =========================
-   POS SIMULATION
+   POS – SIMULATE SALE
 ========================= */
-function bindPosButton() {
+
+function bindSimulatePOS() {
   const btn = document.getElementById("simulatePosBtn");
   if (!btn) return;
 
-  btn.onclick = async () => {
+  btn.addEventListener("click", async () => {
     const item = INVENTORY.find(
       i => i.storeId === "MI-001" && i.sku === "SKU-001"
     );
     if (!item) return;
 
-    await updateDoc(doc(db, "inventory", item.id), {
+    const ref = doc(db, "inventory", item.id);
+
+    await updateDoc(ref, {
       shelfStock: increment(-3)
     });
-  };
+
+    recordAudit(item.storeId, item.sku, "POS_SALE", {
+      quantity: 3
+    });
+  });
+}
+
+/* =========================
+   AUDIT LOG (FIRESTORE)
+========================= */
+
+function recordAudit(storeId, sku, action, context = {}) {
+  if (!LuciData?.audit) return;
+
+  LuciData.audit.record({
+    entityType: "INVENTORY",
+    entityId: `${storeId}-${sku}`,
+    action,
+    actor: {
+      type: "SYSTEM",
+      role: "INVENTORY_ENGINE"
+    },
+    context,
+    result: "SUCCESS",
+    timestamp: new Date().toISOString()
+  });
 }
