@@ -11,7 +11,10 @@ import {
   onSnapshot,
   doc,
   updateDoc,
-  increment
+  increment,
+  addDoc,
+  getDocs,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 /* =========================
@@ -19,7 +22,7 @@ import {
 ========================= */
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCGOo2RHcC8esOLFyTGiaadJS90AhC-PwQ",
+  apiKey: "AIzaSyCGOo2RHc8esOLFyTGiaadJS90AhC-PwQ",
   authDomain: "lucidata-inventory.firebaseapp.com",
   projectId: "lucidata-inventory",
   storageBucket: "lucidata-inventory.firebasestorage.app",
@@ -36,7 +39,8 @@ const db = getFirestore(app);
    STATE
 ========================= */
 
-let INVENTORY = []; // date live din Firestore
+let INVENTORY = [];
+let TASKS = [];
 
 /* =========================
    DOM READY
@@ -44,6 +48,7 @@ let INVENTORY = []; // date live din Firestore
 
 document.addEventListener("DOMContentLoaded", () => {
   subscribeInventory();
+  subscribeInventoryTasks();   // 👈 ADĂUGAT
   bindSimulatePOS();
 });
 
@@ -54,14 +59,77 @@ document.addEventListener("DOMContentLoaded", () => {
 function subscribeInventory() {
   const q = query(collection(db, "inventory"));
 
-  onSnapshot(q, (snapshot) => {
+  onSnapshot(q, async (snapshot) => {
     INVENTORY = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
 
     renderInventoryTable();
-    renderInventoryTasks();
+
+    // 👇 ADĂUGAT: evaluare AI + creare task
+    for (const item of INVENTORY) {
+      await createAITaskIfNeeded(item);
+    }
+  });
+}
+
+/* =========================
+   INVENTORY TASKS (FIRESTORE)
+========================= */
+
+function subscribeInventoryTasks() {
+  const q = query(
+    collection(db, "inventory_tasks"),
+    where("status", "==", "OPEN")
+  );
+
+  onSnapshot(q, (snapshot) => {
+    TASKS = snapshot.docs.map(d => d.data());
+    renderInventoryTasksFromFirestore();
+  });
+}
+
+/* =========================
+   CREATE AI TASK (ONE TIME)
+========================= */
+
+async function createAITaskIfNeeded(item) {
+  const status = LuciData.retail.inventoryEngine.getInventoryStatus(item);
+  if (status === "OK") return;
+
+  const taskType = status; // REFILL_REQUIRED / REORDER_REQUIRED
+
+  const q = query(
+    collection(db, "inventory_tasks"),
+    where("inventoryId", "==", item.id),
+    where("taskType", "==", taskType),
+    where("status", "==", "OPEN")
+  );
+
+  const snap = await getDocs(q);
+  if (!snap.empty) return; // NU duplicăm task-uri
+
+  await addDoc(collection(db, "inventory_tasks"), {
+    inventoryId: item.id,
+    storeId: item.storeId,
+    sku: item.sku,
+
+    taskType,
+    priority: taskType === "REORDER_REQUIRED" ? "CRITICAL" : "HIGH",
+    reason: LuciData.retail.inventoryEngine.explain(item),
+    suggestedQty: null,
+
+    status: "OPEN",
+    source: "AI_ENGINE",
+    createdAt: serverTimestamp(),
+
+    aiContext: {
+      shelfStock: item.shelfStock,
+      warehouseStock: item.warehouseStock,
+      minShelf: item.minShelf,
+      minWarehouse: item.minWarehouse
+    }
   });
 }
 
@@ -90,38 +158,31 @@ function renderInventoryTable() {
       <td><span class="status ${status.toLowerCase()}">${status}</span></td>
       <td class="ai-explain">${explain}</td>
     `;
-
     tbody.appendChild(tr);
   });
 }
 
 /* =========================
-   RENDER TASKS (AI ENGINE)
+   RENDER AI TASKS (FIRESTORE)
 ========================= */
 
-function renderInventoryTasks() {
+function renderInventoryTasksFromFirestore() {
   const tbody = document.getElementById("tasksTableBody");
   if (!tbody) return;
 
   tbody.innerHTML = "";
 
-  const storeIds = [...new Set(INVENTORY.map(i => i.storeId))];
-
-  storeIds.forEach(storeId => {
-    const tasks = LuciData.retail.inventoryEngine.generateTasks(storeId, INVENTORY);
-
-    tasks.forEach(task => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${task.storeId}</td>
-        <td>${task.sku}</td>
-        <td>${task.type}</td>
-        <td>${task.priority}</td>
-        <td>${task.reason}</td>
-        <td>${task.suggestedQty ?? "-"}</td>
-      `;
-      tbody.appendChild(tr);
-    });
+  TASKS.forEach(task => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${task.storeId}</td>
+      <td>${task.sku}</td>
+      <td>${task.taskType}</td>
+      <td>${task.priority}</td>
+      <td>${task.reason}</td>
+      <td>${task.suggestedQty ?? "-"}</td>
+    `;
+    tbody.appendChild(tr);
   });
 }
 
@@ -152,7 +213,7 @@ function bindSimulatePOS() {
 }
 
 /* =========================
-   AUDIT LOG (FIRESTORE)
+   AUDIT LOG (NEATINS)
 ========================= */
 
 function recordAudit(storeId, sku, action, context = {}) {
