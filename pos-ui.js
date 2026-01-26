@@ -1,3 +1,6 @@
+// assets/js/pos-ui.js
+// POS UI – compatibil cu Firebase Inventory (NO LuciData)
+
 document.addEventListener("DOMContentLoaded", () => {
   const btn = document.getElementById("simulatePosBtn");
   const modal = document.getElementById("posModal");
@@ -16,6 +19,10 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("runPosSim").onclick = runPosSimulation;
 });
 
+/* =========================
+   POPULATE SELECTORS
+========================= */
+
 function populatePosSelectors() {
   const storeSel = document.getElementById("posStore");
   const skuSel = document.getElementById("posSku");
@@ -23,16 +30,24 @@ function populatePosSelectors() {
   storeSel.innerHTML = "";
   skuSel.innerHTML = "";
 
-  const inventory = LuciData.retail.inventory;
+  // INVENTORY este menținut live de inventory.js
+  if (!window.INVENTORY || !Array.isArray(window.INVENTORY)) {
+    console.warn("POS UI: INVENTORY indisponibil");
+    return;
+  }
 
-  [...new Set(inventory.map(i => i.storeId))].forEach(s => {
-    storeSel.innerHTML += `<option value="${s}">${s}</option>`;
+  [...new Set(window.INVENTORY.map(i => i.storeId))].forEach(storeId => {
+    storeSel.innerHTML += `<option value="${storeId}">${storeId}</option>`;
   });
 
-  [...new Set(inventory.map(i => i.sku))].forEach(s => {
-    skuSel.innerHTML += `<option value="${s}">${s}</option>`;
+  [...new Set(window.INVENTORY.map(i => i.sku))].forEach(sku => {
+    skuSel.innerHTML += `<option value="${sku}">${sku}</option>`;
   });
 }
+
+/* =========================
+   RUN POS SIMULATION
+========================= */
 
 function runPosSimulation() {
   const storeId = document.getElementById("posStore").value;
@@ -40,19 +55,22 @@ function runPosSimulation() {
   const qty = parseInt(document.getElementById("posQty").value, 10);
 
   if (!storeId || !sku || qty <= 0) {
-    alert("Date invalide");
+    alert("Date POS invalide");
     return;
   }
 
-  LuciData.retail.pos.simulateSale({
+  if (!window.POSSimulator) {
+    alert("POS Simulator indisponibil");
+    return;
+  }
+
+  // 🔔 Trimite eveniment POS
+  window.POSSimulator.simulateSale({
     storeId,
     sku,
     quantity: qty
   });
 
-  // refresh UI
-  if (window.renderInventoryTable) renderInventoryTable();
-  if (window.renderAiTasks) renderAiTasks();
-
   document.getElementById("posModal").classList.add("hidden");
 }
+
