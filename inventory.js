@@ -1,10 +1,10 @@
 // assets/js/inventory.js
-// Inventory UI + Firebase Auth + Firestore (SINGLE FILE)
+// Inventory UI + Firebase Auth + Firestore
+// FĂRĂ base.js · FĂRĂ LuciData · UN SINGUR FIȘIER
 
 /* =========================
    FIREBASE IMPORTS
 ========================= */
-
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import {
   getAuth,
@@ -24,7 +24,6 @@ import {
 /* =========================
    FIREBASE INIT
 ========================= */
-
 const firebaseConfig = {
   apiKey: "AIzaSyCGOo2RHcC8esOLFyTGiaadJS90AhC-PwQ",
   authDomain: "lucidata-inventory.firebaseapp.com",
@@ -41,27 +40,22 @@ const db = getFirestore(app);
 /* =========================
    STATE
 ========================= */
-
 let INVENTORY = [];
 let unsubscribeInventory = null;
 
 /* =========================
-   LOGIN OVERLAY (INJECTED)
+   LOGIN OVERLAY (AUTO)
 ========================= */
+function showLogin() {
+  if (document.getElementById("loginOverlay")) return;
 
-function showLoginOverlay() {
-  let overlay = document.getElementById("firebaseLoginOverlay");
-
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.id = "firebaseLoginOverlay";
-    overlay.style.cssText = `
-      position:fixed; inset:0; z-index:9999;
-      background:#0f172a;
-      display:flex; align-items:center; justify-content:center;
-    `;
-    document.body.appendChild(overlay);
-  }
+  const overlay = document.createElement("div");
+  overlay.id = "loginOverlay";
+  overlay.style.cssText = `
+    position:fixed; inset:0; z-index:9999;
+    background:#0f172a;
+    display:flex; align-items:center; justify-content:center;
+  `;
 
   overlay.innerHTML = `
     <div style="
@@ -87,6 +81,8 @@ function showLoginOverlay() {
     </div>
   `;
 
+  document.body.appendChild(overlay);
+
   document.getElementById("loginBtn").onclick = async () => {
     const email = document.getElementById("loginEmail").value.trim();
     const pass = document.getElementById("loginPassword").value.trim();
@@ -102,18 +98,17 @@ function showLoginOverlay() {
   };
 }
 
-function hideLoginOverlay() {
-  const overlay = document.getElementById("firebaseLoginOverlay");
-  if (overlay) overlay.remove();
+function hideLogin() {
+  const el = document.getElementById("loginOverlay");
+  if (el) el.remove();
 }
 
 /* =========================
-   AUTH STATE HANDLING
+   AUTH STATE
 ========================= */
-
 onAuthStateChanged(auth, (user) => {
   if (!user) {
-    showLoginOverlay();
+    showLogin();
     if (unsubscribeInventory) {
       unsubscribeInventory();
       unsubscribeInventory = null;
@@ -121,16 +116,14 @@ onAuthStateChanged(auth, (user) => {
     return;
   }
 
-  hideLoginOverlay();
-  subscribeInventory();
-  bindSimulatePOS();
+  hideLogin();
+  startInventory();
 });
 
 /* =========================
    FIRESTORE SUBSCRIBE
 ========================= */
-
-function subscribeInventory() {
+function startInventory() {
   if (unsubscribeInventory) return;
 
   unsubscribeInventory = onSnapshot(
@@ -145,22 +138,23 @@ function subscribeInventory() {
       renderInventoryTasks();
     }
   );
+
+  bindPosButton();
 }
 
 /* =========================
    INVENTORY TABLE
 ========================= */
-
 function renderInventoryTable() {
   const tbody = document.getElementById("inventoryTableBody");
-  if (!tbody || !window.LuciData) return;
+  if (!tbody || !window.InventoryEngine) return;
 
   tbody.innerHTML = "";
 
   INVENTORY.forEach(item => {
-    const status = LuciData.retail.inventoryEngine.getInventoryStatus(item);
-    const total = LuciData.retail.inventoryEngine.getTotalStock(item);
-    const explain = LuciData.retail.inventoryEngine.explain(item);
+    const status = InventoryEngine.getInventoryStatus(item);
+    const total = InventoryEngine.getTotalStock(item);
+    const explain = InventoryEngine.explain(item);
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -179,16 +173,15 @@ function renderInventoryTable() {
 /* =========================
    AI TASKS
 ========================= */
-
 function renderInventoryTasks() {
   const tbody = document.getElementById("tasksTableBody");
-  if (!tbody || !window.LuciData) return;
+  if (!tbody || !window.InventoryEngine) return;
 
   tbody.innerHTML = "";
 
   const storeIds = [...new Set(INVENTORY.map(i => i.storeId))];
   storeIds.forEach(storeId => {
-    const tasks = LuciData.retail.inventoryEngine.generateTasks(storeId, INVENTORY);
+    const tasks = InventoryEngine.generateTasks(storeId, INVENTORY);
     tasks.forEach(task => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -207,8 +200,7 @@ function renderInventoryTasks() {
 /* =========================
    POS SIMULATION
 ========================= */
-
-function bindSimulatePOS() {
+function bindPosButton() {
   const btn = document.getElementById("simulatePosBtn");
   if (!btn) return;
 
@@ -221,17 +213,5 @@ function bindSimulatePOS() {
     await updateDoc(doc(db, "inventory", item.id), {
       shelfStock: increment(-3)
     });
-
-    if (window.LuciData?.audit) {
-      LuciData.audit.record({
-        entityType: "INVENTORY",
-        entityId: `${item.storeId}-${item.sku}`,
-        action: "POS_SALE",
-        actor: { type: "SYSTEM", role: "POS" },
-        context: { quantity: 3 },
-        result: "SUCCESS",
-        timestamp: new Date().toISOString()
-      });
-    }
   };
 }
