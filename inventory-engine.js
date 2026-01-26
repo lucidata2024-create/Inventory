@@ -76,7 +76,7 @@ LuciData.retail.inventoryEngine = {
     const status = this.getInventoryStatus(item);
 
     if (status === "REFILL_REQUIRED") {
-      return "AI a detectat că stocul de pe raft este sub pragul minim definit pentru vânzări optime.";
+      return "Stocul de pe raft este sub pragul minim definit pentru vânzări optime.";
     }
 
     if (status === "REORDER_REQUIRED") {
